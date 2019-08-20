@@ -260,7 +260,7 @@ remote func add_node(scene, parent_path,node_name,node_str):
 	#Dis/connect signals to avoid recursively calling
 	get_tree().disconnect("node_added",self,"_node_added")
 	parent.add_child(instance)
-	instance.set_owner(get_tree().edited_scene_root)
+	instance.set_owner(scene_root)
 	get_tree().connect("node_added",self,"_node_added")
 
 
