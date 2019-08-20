@@ -335,13 +335,15 @@ remote func reparent_nodes(scene, node_paths,to_path):
 	var scene_root = get_scene_node(scene)
 	
 	get_tree().disconnect("node_added",self,"_node_added")
+	get_tree().disconnect("node_removed",self,"_node_removed")
+	var new_parent = scene_root.get_node(to_path)
 	for path in node_paths:
 		var node = scene_root.get_node(path)
 		node.get_parent().remove_child(node)
-		var new_parent = scene_root.get_node(to_path)
 		new_parent.add_child(node)
-		#May need to set the node owner again?
+		node.set_owner(scene_root)
 	get_tree().connect("node_added",self,"_node_added")
+	get_tree().connect("node_removed",self,"_node_removed")
 
 remote func reorder_nodes(scene, node_paths,index):
 	var scene_root = get_scene_node(scene)
