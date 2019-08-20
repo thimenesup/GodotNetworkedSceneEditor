@@ -87,7 +87,7 @@ func _input(event):
 					transform_data.append(node.get_rect())
 			
 			for peer in get_scene_peers(current_scene):
-				rpc_id(peer,"set_transforms",scene_root, paths,transform_data)
+				rpc_id(peer,"set_transforms",current_scene, paths,transform_data)
 
 
 func _on_Host_pressed():
