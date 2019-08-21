@@ -17,6 +17,7 @@ var network = NetworkedMultiplayerENet.new()
 var editor_peers = {} #Network ID:EditorPeer
 
 var open_scene_nodes = []
+var current_scene_root = null
 var current_scene = ""
 
 
@@ -70,13 +71,12 @@ func _ready():
 func _input(event):
 	if event is InputEventKey:
 		if event.scancode == KEY_CONTROL and event.pressed:
-			var scene_root = get_scene_node(current_scene)
 			var nodes = editor_interface.get_selection().get_transformable_selected_nodes()
 			
 			var paths = []
 			var transform_data = []
 			for node in nodes:
-				paths.append(scene_root.get_path_to(node))
+				paths.append(current_scene_root.get_path_to(node))
 				if node is Spatial:
 					transform_data.append(node.transform)
 				if node is Node2D:
@@ -191,30 +191,32 @@ remote func set_transforms(scene, node_paths,transform_data):
 
 
 func _inspector_property_edited(property):
-	var scene_root = get_scene_node(current_scene)
-	
 	var nodes = editor_interface.get_selection().get_selected_nodes()
 	#print("Edited property:%s from nodes:%s" % [property,nodes])
 	
 	for i in range(nodes.size()):
-		var is_resource_path = false
+		var resource_class = ""
 		var value = nodes[i].get(property)
 		if value is Resource and not value.resource_path.empty():
+			resource_class = value.get_class()
 			value = value.resource_path
-			is_resource_path = true
 		
-		var path = scene_root.get_path_to(nodes[i])
+		var path = current_scene_root.get_path_to(nodes[i])
 		
 		for peer in get_scene_peers(current_scene):
-			rpc_id(peer,"edit_property",current_scene ,path,property,value, is_resource_path)
+			rpc_id(peer,"edit_property",current_scene ,path,property,value, resource_class)
 
-remote func edit_property(scene, node_path,property,value, is_resource_path): 
+remote func edit_property(scene, node_path,property,value, resource_class): 
 	var scene_root = get_scene_node(scene)
 	
 	var node = scene_root.get_node(node_path)
 	print("Node:%s Property:%s Value: %s set by peer %s" % [node,property,value,get_tree().get_rpc_sender_id()])
-	if is_resource_path:
-		value = load(value) #TODO: If resource doesn't exist, create dummy with same filename and type
+	if not resource_class.empty():
+		var path = value
+		value = load(path)
+		if value == null: #Create dummy resource
+			value = ClassDB.instance(resource_class)
+			ResourceSaver.save(path, value)
 	node.set(property,value)
 
 
@@ -227,13 +229,11 @@ func _node_added(node):
 	if node_rearranged_signals > 0 or scene_changed_signals > 0:
 		return
 	
-	var scene_root = get_scene_node(current_scene)
-	
-	if node.owner != scene_root: #That node is a child of a packed scene instance, ignore
+	if node.owner != current_scene_root: #That node is a child of a packed scene instance, ignore
 		return
 	
 	#print("Node added:%s Named:%s" % [node,node.name])
-	var parent_path = scene_root.get_path_to(node.get_parent())
+	var parent_path = current_scene_root.get_path_to(node.get_parent())
 	var node_string = node.get_class()
 	if not node.filename.empty():
 		node_string = node.filename
@@ -246,7 +246,15 @@ remote func add_node(scene, parent_path,node_name,node_str):
 	if ClassDB.class_exists(node_str):
 		instance = ClassDB.instance(node_str)
 	else:
-		instance = load(node_str).instance()
+		var packed_scene = load(node_str)
+		if packed_scene == null: #Create dummy packed scene
+			packed_scene = PackedScene.new()
+			var node = Node.new()
+			node.name = node_name
+			node.owner = node
+			packed_scene.pack(node)
+			ResourceSaver.save(node_str, packed_scene)
+		instance = packed_scene.instance()
 	if not instance:
 		return
 	
@@ -276,9 +284,7 @@ func _node_removed(node):
 	if node_rearranged_signals > 0 or scene_changed_signals > 0:
 		return
 	
-	var scene_root = get_scene_node(current_scene)
-	
-	if og_owner != scene_root: #That node is a child of a packed scene instance, ignore
+	if og_owner != current_scene_root: #That node is a child of a packed scene instance, ignore
 		return
 	
 	#print("Node removed:%s Named:%s" % [node,node.name])
@@ -299,11 +305,10 @@ remote func remove_node(scene, node_path):
 
 
 func _node_prerename(node, new_name):
-	var scene_root = get_scene_node(current_scene)
 	#print("Prerename:%s to %s" % [node,new_name])
 	
 	for peer in get_scene_peers(current_scene):
-		var path = scene_root.get_path_to(node)
+		var path = current_scene_root.get_path_to(node)
 		rpc_id(peer,"rename_node",current_scene, path,new_name)
 
 remote func rename_node(scene, node_path,new_name):
@@ -316,7 +321,6 @@ func _nodes_rearranged(paths, to_path, type): #Type 0 = Reparenting Type 1 = Reo
 	
 	#print("Rearranged:%s to %s type:%s" % [paths,to_path,type])
 	
-	var scene_root = get_scene_node(current_scene)
 	var converted_paths = []
 	var converted_to = ""
 	
@@ -326,7 +330,7 @@ func _nodes_rearranged(paths, to_path, type): #Type 0 = Reparenting Type 1 = Reo
 	
 	if type == 0:
 		var to_node = get_node(to_path)
-		converted_to = scene_root.get_path_to(to_node)
+		converted_to = current_scene_root.get_path_to(to_node)
 		for peer in get_scene_peers(current_scene):
 			rpc_id(peer,"reparent_nodes",current_scene, converted_paths, converted_to)
 	
@@ -376,10 +380,10 @@ func node_belongs_in_edited_scene(node):
 func _scene_changed(scene_node):
 	scene_changed_signals += 1
 	
+	current_scene_root = scene_node
 	if scene_node == null:
 		current_scene = ""
 		return
-	
 	current_scene = scene_node.filename
 	
 	if not scene_node in open_scene_nodes:
@@ -515,14 +519,12 @@ func get_nodes(node):
 
 
 func convert_to_scene_path(node_path): #For when Node.get_path_to(node) doesn't work
-	var scene_root = get_scene_node(current_scene)
-	
 	var relative_start = 0
 	
 	var i = 0
 	while i < node_path.get_name_count():
 		var node = node_path.get_name(i)
-		if node == scene_root.name:
+		if node == current_scene_root.name:
 			relative_start = i
 			break
 		i+=1
@@ -533,7 +535,7 @@ func convert_to_scene_path(node_path): #For when Node.get_path_to(node) doesn't 
 	while j < node_path.get_name_count():
 		path_string += "/%s" % node_path.get_name(j) 
 		j+=1
-	path_string.erase(0,scene_root.name.length() + 2) #Remove unwanted "/SceneRoot/" from path
+	path_string.erase(0,current_scene_root.name.length() + 2) #Remove unwanted "/SceneRoot/" from path
 	
 	return NodePath(path_string)
 
