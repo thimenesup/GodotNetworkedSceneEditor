@@ -194,7 +194,7 @@ func _inspector_property_edited(property):
 	var scene_root = get_scene_node(current_scene)
 	
 	var nodes = editor_interface.get_selection().get_selected_nodes()
-	print("Edited property:%s from nodes:%s" % [property,nodes])
+	#print("Edited property:%s from nodes:%s" % [property,nodes])
 	
 	for i in range(nodes.size()):
 		var is_resource_path = false
@@ -232,9 +232,8 @@ func _node_added(node):
 	if node.owner != scene_root: #That node is a child of a packed scene instance, ignore
 		return
 	
-	print("Node added:%s Named:%s" % [node,node.name])
+	#print("Node added:%s Named:%s" % [node,node.name])
 	var parent_path = scene_root.get_path_to(node.get_parent())
-	print(parent_path)
 	var node_string = node.get_class()
 	if not node.filename.empty():
 		node_string = node.filename
@@ -280,10 +279,9 @@ func _node_removed(node):
 	var scene_root = get_scene_node(current_scene)
 	
 	if og_owner != scene_root: #That node is a child of a packed scene instance, ignore
-		print("Node:%s if a child of scene, ignore" % node.name)
 		return
 	
-	print("Node removed:%s Named:%s" % [node,node.name])
+	#print("Node removed:%s Named:%s" % [node,node.name])
 	path = convert_to_scene_path(path)
 	
 	for peer in get_scene_peers(current_scene):
@@ -302,7 +300,7 @@ remote func remove_node(scene, node_path):
 
 func _node_prerename(node, new_name):
 	var scene_root = get_scene_node(current_scene)
-	print("Prerename:%s to %s" % [node,new_name])
+	#print("Prerename:%s to %s" % [node,new_name])
 	
 	for peer in get_scene_peers(current_scene):
 		var path = scene_root.get_path_to(node)
