@@ -23,7 +23,6 @@ var current_scene = ""
 #This is a hack to prevent the node_added/removed signals from triggering when opening/closing scenes etc
 var node_rearranged_signals = 0
 var scene_changed_signals = 0
-var scene_closed_signals = 0
 
 signal process_started()
 
@@ -31,7 +30,6 @@ func _process(delta):
 	emit_signal("process_started")
 	node_rearranged_signals = 0
 	scene_changed_signals = 0
-	scene_closed_signals = 0
 
 
 func _ready():
@@ -231,6 +229,9 @@ func _node_added(node):
 	
 	var scene_root = get_scene_node(current_scene)
 	
+	if node.owner != scene_root: #That node is a child of a packed scene instance, ignore
+		return
+	
 	print("Node added:%s Named:%s" % [node,node.name])
 	var parent_path = scene_root.get_path_to(node.get_parent())
 	print(parent_path)
@@ -268,13 +269,19 @@ func _node_removed(node):
 	if not node_belongs_in_edited_scene(node):
 		return
 	
-	var path = get_path_to(node) #Get it now, or won't be available once it resumes later
+	#Get these now, or won't be available once it resumes later
+	var og_owner = node.owner
+	var path = get_path_to(node)
 	
 	yield(self,"process_started")
 	if node_rearranged_signals > 0 or scene_changed_signals > 0:
 		return
 	
 	var scene_root = get_scene_node(current_scene)
+	
+	if og_owner != scene_root: #That node is a child of a packed scene instance, ignore
+		print("Node:%s if a child of scene, ignore" % node.name)
+		return
 	
 	print("Node removed:%s Named:%s" % [node,node.name])
 	path = convert_to_scene_path(path)
@@ -403,8 +410,6 @@ sync func scene_opened(filepath):
 
 
 func _scene_closed(filepath):
-	scene_closed_signals += 1
-	
 	for node in open_scene_nodes:
 		if node.filename == filepath:
 			open_scene_nodes.erase(node)
@@ -537,12 +542,6 @@ func convert_to_scene_path(node_path): #For when Node.get_path_to(node) doesn't 
 
 #TODO: Handling resource dependencies by creating dummy resources with a later option to do a file transfer
 #to replace them by the actual ones
-
-#TODO: A hotkey shortcut where the currently selected transform nodes will replicate their transforms 
-#meant for after editing them with the gizmos for quick replication (Controls,Node2D,Spatial)
-
-#TODO: When adding/removing a scene, the signals triggers and the RPCs get sent
-#for every node in it, would be more efficient if it only was the for the root
 
 #TODO: Implement a way to cache nodepaths for efficiency?
 
