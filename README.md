@@ -14,17 +14,16 @@ Remove nodes/scenes
 
 Set node properties, from primitive values to objects/resources!
 
-[Needs exposing SceneTreeDock.get_editor_tree() to GDScript]
-Rename nodes
+Needs exposing SceneTreeDock.get_editor_tree() to GDScript:
 
-Reparent nodes
+Rename nodes*
 
-Reorder nodes
+Reparent nodes*
+
+Reorder nodes*
 
 
 ## Todo
 Undo/redo support
-
-Scene file transfer for ensured consistency
 
 Dummy resource system with file transfer replacements
