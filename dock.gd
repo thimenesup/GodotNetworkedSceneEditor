@@ -420,7 +420,7 @@ remote func receive_delta_scene(scene_path,scene_data):
 		var node = open_scene_nodes[i]
 		if not is_instance_valid(node): #Node freed on scene reload
 			print("Reloaded scene from received delta")
-			open_scene_nodes[i] = get_tree().edited_scene_root
+			open_scene_nodes[i] = get_tree().root
 			break
 		i+=1
 	
