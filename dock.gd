@@ -34,8 +34,6 @@ func _process(delta):
 
 
 func _ready():
-	get_tree().multiplayer.set_root_node(self)
-	
 	var root = peer_tree.create_item()
 	peer_tree.set_hide_root(true)
 	
@@ -92,6 +90,7 @@ func _on_Host_pressed():
 	print("Hosting")
 	network.create_server( int($Input/Port.text) )
 	get_tree().network_peer = network
+	get_tree().multiplayer.set_root_node(self)
 	
 	peer_connected(get_tree().get_network_unique_id(), $Input/Name.text, editor_interface.get_open_scenes())
 	
@@ -101,6 +100,7 @@ func _on_Connect_pressed():
 	print("Connecting")
 	network.create_client($Input/IP.text, int($Input/Port.text) )
 	get_tree().network_peer = network
+	get_tree().multiplayer.set_root_node(self)
 	
 	toggle_conection_buttons(false)
 
@@ -314,6 +314,9 @@ func _node_prerename(node, new_name):
 remote func rename_node(scene, node_path,new_name):
 	var scene_root = get_scene_node(scene)
 	scene_root.get_node(node_path).name = new_name
+	
+	#Sometimes the TreeItem won't update with its new name/path until another tree change is done so force it now
+	scene_tree_editor.update_tree()
 
 
 func _nodes_rearranged(paths, to_path, type): #Type 0 = Reparenting Type 1 = Reordering
@@ -322,7 +325,6 @@ func _nodes_rearranged(paths, to_path, type): #Type 0 = Reparenting Type 1 = Reo
 	#print("Rearranged:%s to %s type:%s" % [paths,to_path,type])
 	
 	var converted_paths = []
-	var converted_to = ""
 	
 	for path in paths:
 		var relative_path = convert_to_scene_path(path)
@@ -330,7 +332,7 @@ func _nodes_rearranged(paths, to_path, type): #Type 0 = Reparenting Type 1 = Reo
 	
 	if type == 0:
 		var to_node = get_node(to_path)
-		converted_to = current_scene_root.get_path_to(to_node)
+		var converted_to = current_scene_root.get_path_to(to_node)
 		for peer in get_scene_peers(current_scene):
 			rpc_id(peer,"reparent_nodes",current_scene, converted_paths, converted_to)
 	
@@ -377,6 +379,57 @@ func node_belongs_in_edited_scene(node):
 
 
 
+#Sending the scene as is doesn't handle subresources well and sends their data directly instead of file paths/refs
+#The editor doesn't like manipulating directly the root node either and will crash when interacting with the new nodes/closing scenes
+#If only there was a way to write/read files in memory...
+remote func request_delta_scene(scene_path):
+	var scene_root = get_scene_node(scene_path)
+	
+	var path = scene_path
+	if scene_root: #Scene is open, sent that in its actual state
+		var packed_scene = PackedScene.new()
+		packed_scene.pack(scene_root)
+		path = "res://addons/networked_editor/temp_send_delta.tscn"
+		ResourceSaver.save(path,packed_scene)
+	
+	var file = File.new()
+	file.open(path,File.READ)
+	var scene_data = file.get_as_text()
+	file.close()
+	
+	rpc_id(get_tree().get_rpc_sender_id(),"receive_delta_scene",scene_path,scene_data)
+
+remote func receive_delta_scene(scene_path,scene_data):
+	print("Received delta scene")
+	
+	var file = File.new()
+	file.open(scene_path,File.WRITE) #NOTE: This will overwrite the scene
+	file.store_string(scene_data)
+	file.close()
+	
+	get_tree().disconnect("node_added",self,"_node_added")
+	get_tree().disconnect("node_removed",self,"_node_removed")
+	plugin.disconnect("scene_changed",self,"_scene_changed")
+	plugin.disconnect("scene_closed",self,"_scene_closed")
+	
+	editor_interface.reload_scene_from_path(scene_path)
+	
+	#Update the opened scene node ref, that gets freed and will make notifying remotely scene closed not work etc
+	var i = 0
+	while i < open_scene_nodes.size():
+		var node = open_scene_nodes[i]
+		if not is_instance_valid(node): #Node freed on scene reload
+			print("Reloaded scene from received delta")
+			open_scene_nodes[i] = get_tree().edited_scene_root
+			break
+		i+=1
+	
+	get_tree().connect("node_added",self,"_node_added")
+	get_tree().connect("node_removed",self,"_node_removed")
+	plugin.connect("scene_changed",self,"_scene_changed")
+	plugin.connect("scene_closed",self,"_scene_closed")
+
+
 func _scene_changed(scene_node):
 	scene_changed_signals += 1
 	
@@ -399,6 +452,10 @@ func _scene_changed(scene_node):
 func _scene_opened(filepath):
 	print("Scene opened: %s" % filepath)
 	rpc("scene_opened",filepath)
+	
+	if $Input/SceneSync.pressed:
+		print("Requesting delta scene")
+		rpc_id(1,"request_delta_scene",filepath)
 
 sync func scene_opened(filepath):
 	var peer_id = get_tree().get_rpc_sender_id()
