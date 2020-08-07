@@ -1,6 +1,8 @@
 # GodotNetworkedSceneEditor
 Godot plugin that allows people to connect and edit scenes at the same time
 
+[<img src="https://img.youtube.com/vi/sIVMP1THjSE/maxresdefault.jpg">](https://youtu.be/sIVMP1THjSE)
+
 ## Features
 Extremely small source/plugin!
 
